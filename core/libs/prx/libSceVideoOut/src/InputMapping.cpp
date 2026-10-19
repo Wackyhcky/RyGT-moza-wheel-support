@@ -12,6 +12,7 @@
 #include <string_view>
 #include <unordered_set>
 
+#include "SDL_joystick.h"
 #include "SDL_keyboard.h"
 #include "SDL_filesystem.h"
 
@@ -57,8 +58,17 @@ constexpr auto actions = std::array{
     InputAction{"TouchLeft", Pad::InputControl::TouchLeft, Pad::PadButton::None},
     InputAction{"TouchRight", Pad::InputControl::TouchRight, Pad::PadButton::None},
     InputAction{"ToggleMouse", Pad::InputControl::ToggleMouse, Pad::PadButton::None},
-    InputAction{"ToggleFullscreen", Pad::InputControl::ToggleFullscreen, Pad::PadButton::None}
+    InputAction{"ToggleFullscreen", Pad::InputControl::ToggleFullscreen, Pad::PadButton::None},
+    InputAction{"Steering", Pad::InputControl::Steering, Pad::PadButton::None},
+    InputAction{"Throttle", Pad::InputControl::Throttle, Pad::PadButton::None},
+    InputAction{"Brake", Pad::InputControl::Brake, Pad::PadButton::None},
+    InputAction{"Clutch", Pad::InputControl::Clutch, Pad::PadButton::None}
 };
+
+bool isAnalog(Pad::InputControl control) {
+    return control == Pad::InputControl::Steering || control == Pad::InputControl::Throttle || control == Pad::InputControl::Brake ||
+        control == Pad::InputControl::Clutch;
+}
 
 std::string upper(std::string_view value) {
     std::string result(value);
@@ -99,7 +109,50 @@ Pad::MouseButton parseMouseButton(std::string_view name) {
     throw std::runtime_error("unknown mouse button '" + std::string(name) + "'");
 }
 
+int parseIndex(std::string_view value, const char* what) {
+    if (value.empty() || value.size() > 3 || !std::all_of(value.begin(), value.end(), [](unsigned char c) { return std::isdigit(c) != 0; })) {
+        throw std::runtime_error(std::string(what) + " must be a number");
+    }
+    return std::stoi(std::string(value));
+}
+
+// JOYAXIS:<n>[:INVERT][@device], JOYBUTTON:<n>[@device] or JOYHAT:<UP|DOWN|LEFT|RIGHT>[@device].
+Pad::JoystickBinding parseJoystickBinding(const InputAction& action, const std::string& type, std::string_view value) {
+    Pad::JoystickBinding binding{action.control, action.button};
+    if (const auto at = value.find('@'); at != std::string_view::npos) {
+        binding.device = std::string(trim(value.substr(at + 1)));
+        if (binding.device.empty()) throw std::runtime_error("device name after '@' is empty");
+        value = trim(value.substr(0, at));
+    }
+    if (type == "JOYAXIS") {
+        if (!isAnalog(action.control)) throw std::runtime_error("JOYAXIS can only map to Steering, Throttle, Brake or Clutch");
+        if (const auto colon = value.find(':'); colon != std::string_view::npos) {
+            if (upper(trim(value.substr(colon + 1))) != "INVERT") throw std::runtime_error("axis option must be INVERT");
+            binding.invert = true;
+            value = trim(value.substr(0, colon));
+        }
+        binding.axis = parseIndex(value, "joystick axis");
+        return binding;
+    }
+    if (isAnalog(action.control)) throw std::runtime_error(std::string(action.name) + " can only use JOYAXIS");
+    if (action.control == Pad::InputControl::ToggleFullscreen || action.control == Pad::InputControl::ToggleMouse) {
+        throw std::runtime_error(std::string(action.name) + " cannot use a joystick");
+    }
+    if (type == "JOYBUTTON") {
+        binding.joystickButton = parseIndex(value, "joystick button");
+        return binding;
+    }
+    const auto direction = upper(value);
+    if (direction == "UP") binding.hat = SDL_HAT_UP;
+    else if (direction == "DOWN") binding.hat = SDL_HAT_DOWN;
+    else if (direction == "LEFT") binding.hat = SDL_HAT_LEFT;
+    else if (direction == "RIGHT") binding.hat = SDL_HAT_RIGHT;
+    else throw std::runtime_error("joystick hat direction must be UP, DOWN, LEFT or RIGHT");
+    return binding;
+}
+
 Pad::InputBinding parseBinding(const InputAction& action, std::string_view source) {
+    if (isAnalog(action.control)) throw std::runtime_error(std::string(action.name) + " can only use JOYAXIS");
     const auto separator = source.find(':');
     if (separator == std::string_view::npos) throw std::runtime_error("source must use TYPE:VALUE format");
     const auto type = upper(trim(source.substr(0, separator)));
@@ -125,7 +178,7 @@ Pad::InputBinding parseBinding(const InputAction& action, std::string_view sourc
         if (direction == "DOWN") return {SDL_SCANCODE_UNKNOWN, Pad::MouseButton::None, action.control, action.button, -1};
         throw std::runtime_error("mouse wheel direction must be UP or DOWN");
     }
-    throw std::runtime_error("source type must be KEY, MOUSE or WHEEL");
+    throw std::runtime_error("source type must be KEY, MOUSE, WHEEL, JOYAXIS, JOYBUTTON or JOYHAT");
 }
 
 [[noreturn]] void invalidLine(const std::filesystem::path& path, std::size_t line, const std::string& reason) {
@@ -141,7 +194,13 @@ std::filesystem::path defaultConfigPath() {
 }
 
 std::vector<Pad::InputBinding> Pad::LoadInputMapping() {
-    std::vector<InputBinding> bindings(InputMapping.begin(), InputMapping.end());
+    return LoadInputConfig().bindings;
+}
+
+Pad::InputConfig Pad::LoadInputConfig() {
+    InputConfig config;
+    auto& bindings = config.bindings;
+    bindings.assign(InputMapping.begin(), InputMapping.end());
     const char* configuredPath = compatEnv("RTY_INPUT_CONFIG", "ANYPS5_INPUT_CONFIG");
     const bool explicitPath = configuredPath != nullptr && configuredPath[0] != '\0';
     const std::filesystem::path path = explicitPath ? configuredPath : defaultConfigPath();
@@ -150,7 +209,7 @@ std::vector<Pad::InputBinding> Pad::LoadInputMapping() {
         if (explicitPath || std::filesystem::exists(path)) {
             throw std::runtime_error("Pad: cannot read input mapping '" + path.string() + "'");
         }
-        return bindings;
+        return config;
     }
 
     std::unordered_set<std::string> overriddenActions;
@@ -172,6 +231,15 @@ std::vector<Pad::InputBinding> Pad::LoadInputMapping() {
         if (source.empty()) invalidLine(path, lineNumber, "source is empty");
 
         try {
+            const auto sourceType = upper(trim(source.substr(0, source.find(':'))));
+            if (sourceType == "JOYAXIS" || sourceType == "JOYBUTTON" || sourceType == "JOYHAT") {
+                const auto colon = source.find(':');
+                if (colon == std::string_view::npos || trim(source.substr(colon + 1)).empty()) throw std::runtime_error("source value is empty");
+                config.joystickBindings.push_back(parseJoystickBinding(*action, sourceType, trim(source.substr(colon + 1))));
+                if (action->control == InputControl::Button) config.joystickButtons.push_back(action->button);
+                else config.joystickControls.push_back(action->control);
+                continue;
+            }
             auto binding = parseBinding(*action, source);
             const auto normalizedAction = upper(action->name);
             if (overriddenActions.insert(normalizedAction).second) {
@@ -189,5 +257,5 @@ std::vector<Pad::InputBinding> Pad::LoadInputMapping() {
     }
     if (file.bad()) throw std::runtime_error("Pad: cannot read input mapping '" + path.string() + "'");
 
-    return bindings;
+    return config;
 }

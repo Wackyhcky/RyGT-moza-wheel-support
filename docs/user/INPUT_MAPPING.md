@@ -31,3 +31,65 @@ ToggleMouse = MOUSE:Middle
 ```
 
 An invalid line reports the file and line number and stops input initialization. If the configured file does not exist or cannot be read, Ryty reports an error. With no `ryty-input.ini` and no `RTY_INPUT_CONFIG`, the built-in mapping is used.
+
+## Racing wheels and pedals
+
+Racing wheels (Logitech G25/G27/G29/G920/G923/G PRO, Moza, Fanatec and any device SDL reports as a wheel) and other joysticks that SDL does not map as game controllers are read by libScePad on their own thread, whichever window or renderer is in use.
+
+The wheel is reported to the game as a native steering wheel: `scePadOpenExt` opens it, `scePadReadExt`/`scePadReadStateExt` read it, and `scePadDeviceClassParseData` reports its position, throttle, brake and clutch through the steering-wheel device class. By default it presents itself as a Logitech G29 (`046d:c24f`), which GT Sport drives through its `logiWheel.prx`. The wheel's mapped buttons also reach player 1's ordinary pad, so menus can be used with it.
+
+Without any configuration:
+
+- Steering is axis 0 of the wheel.
+- The pedals are found automatically: axes that rest at one end of their range, on the wheel first and then on a separately connected pedal set, become the throttle, brake and clutch, in axis order. Pedals that rest high (Logitech) and pedals that rest low (Moza, most others) both work.
+- The wheel's D-pad is the pad's D-pad. On Logitech wheels the face buttons map to the matching PlayStation buttons (or A/B/X/Y on Xbox wheels), the right and left paddles to R1 and L1, and Options/Menu to Options. Other wheels have no default button mapping.
+- Wheels with force feedback get a centering spring at 30% strength until the game sends its own forces. Set `RTY_WHEEL_SPRING` to a value from 0 to 100 to change it; 0 turns it off.
+
+When a wheel connects, the log lists it with its axis, button and hat counts and shows which axes became steering, throttle, brake and clutch. The first time each axis is moved and each button is pressed, the log names it, so the numbers for the settings below can be found by moving each control once.
+
+### ryty-input.ini
+
+Wheel inputs can be set with these sources:
+
+- `JOYAXIS:<n>` for `Steering`, `Throttle`, `Brake` or `Clutch`. Add `:INVERT` to reverse the steering direction, or the direction of a pedal that rests in the middle of its range. Pedals that rest at one end find their direction automatically.
+- `JOYBUTTON:<n>` for any pad button or stick direction.
+- `JOYHAT:Up`, `JOYHAT:Down`, `JOYHAT:Left` or `JOYHAT:Right` for any pad button or stick direction.
+
+Any of them can end with `@<name>` to pick a device whose name contains `<name>` (case-insensitive), for example a pedal set connected by its own USB cable. Without it, the wheel is used. A joystick line replaces only the built-in wheel binding for that action; keyboard and mouse bindings for the same action stay. For example, for a Moza R3:
+
+```ini
+Cross = JOYBUTTON:0
+Circle = JOYBUTTON:1
+Square = JOYBUTTON:2
+Triangle = JOYBUTTON:3
+Up = JOYBUTTON:4
+Right = JOYBUTTON:5
+Down = JOYBUTTON:6
+Left = JOYBUTTON:7
+Options = JOYBUTTON:36
+R1 = JOYBUTTON:13
+L1 = JOYBUTTON:12
+Throttle = JOYAXIS:1
+Brake = JOYAXIS:4
+```
+
+The numbers above are an example; use the numbers your log shows.
+
+### ryty-wheel.ini
+
+Optional, beside the game executable, with `Key = Value` lines:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `Rotation` | 900 | Lock-to-lock degrees, as set in the wheel's own software. |
+| `PedalMax` | 65535 | Pedal value reported at full press. |
+| `AngleUnit` | `deg` | Unit of the reported steering angle (`deg` or `rad`). |
+| `Present` | `046d:c24f` | USB vendor:product the wheel is presented as. |
+| `Capability` | 0 | Steering-wheel capability bits reported to the game. |
+| `FfbGain` | 100 | Force feedback strength in percent (0-200). |
+| `FfbInvert` | 0 | 1 reverses the direction of constant forces. |
+| `PadIsWheel` | 0 | 1 makes player 1's pad report itself as the steering wheel too, as a G29 does on a PS4; GT Sport only enables its wheel mode for such a pad. Experimental: in that mode the paddles do not shift yet. |
+
+### Force feedback (experimental)
+
+`logiWheel.prx` sends a G29's force feedback as output report 0x30 through `scePadOutputReport`: a report-id byte followed by Logitech classic 8-byte commands. libScePad tracks the four effect slots (constant, variable, spring, damper, friction, play/stop, autocenter) and plays them on the wheel as SDL haptic effects. logiWheel's report thread runs on a kernel timer event, which needs `sceKernelAddTimerEvent` in libkernel. With GT Sport the effects are created and started, but logiWheel does not yet send reports, so force feedback is not working end to end.

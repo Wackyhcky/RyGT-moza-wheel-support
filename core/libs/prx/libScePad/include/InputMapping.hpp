@@ -52,6 +52,7 @@ inline constexpr std::array InputMapping{
 };
 
 std::vector<InputBinding> LoadInputMapping();
+InputConfig LoadInputConfig();
 
 }
 

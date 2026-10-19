@@ -3,6 +3,8 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
+#include <vector>
 #include "SDL_scancode.h"
 #include "SDL_mouse.h"
 
@@ -20,7 +22,11 @@ enum class InputControl {
     TouchLeft,
     TouchRight,
     ToggleMouse,
-    ToggleFullscreen
+    ToggleFullscreen,
+    Steering,
+    Throttle,
+    Brake,
+    Clutch
 };
 
 enum class PadButton : std::uint32_t {
@@ -58,6 +64,27 @@ struct InputBinding {
     InputControl control;
     PadButton button = PadButton::None;
     int wheelDirection = 0;
+};
+
+// A wheel, pedal set or other joystick that SDL does not treat as a game controller.
+// Only one of axis, button or hat is set. An empty device means the primary wheel; otherwise
+// the first joystick whose name contains it (case-insensitive).
+struct JoystickBinding {
+    InputControl control;
+    PadButton button = PadButton::None;
+    int axis = -1;
+    int joystickButton = -1;
+    std::uint8_t hat = 0;
+    bool invert = false;
+    std::string device;
+};
+
+struct InputConfig {
+    std::vector<InputBinding> bindings;
+    std::vector<JoystickBinding> joystickBindings;
+    // Actions the file bound to a joystick source, which replace the built-in wheel defaults.
+    std::vector<InputControl> joystickControls;
+    std::vector<PadButton> joystickButtons;
 };
 
 }

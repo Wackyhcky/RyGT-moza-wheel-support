@@ -2,6 +2,7 @@
 #define CORE_LIBS_PRX_LIBSCEPAD_PADSTATE_HPP
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <exception>
 #include "SceTypes.hpp"
@@ -61,6 +62,43 @@ void SetLightBar(int slot, bool valid, std::uint8_t r, std::uint8_t g, std::uint
 void SetTriggerCommand(int slot, int trigger, const std::uint8_t* command);
 void ResetOrientation(int slot);
 void SetMotionEnabled(int slot, bool enabled);
+}
+
+struct WheelState;
+
+namespace Pad {
+// Racing wheels and other joysticks, read on their own thread (WheelBridge.cpp).
+void StartWheel();
+void ApplyWheel(PadInputState& state);
+WheelState ReadWheel();
+// While the title has the wheel open as a steering wheel, its L1/R1 (the G29's shift paddles)
+// belong to the wheel alone; on the ordinary pad they would also move the camera.
+void SetWheelOpened(bool opened);
+// A force-feedback output report the title sent to the wheel (Logitech classic commands).
+void WheelReport(const std::uint8_t* report, std::size_t length);
+// Waits up to the given time for the wheel thread's first sample; false if it is not ready.
+bool WaitForWheel(int milliseconds);
+
+// ryty-wheel.ini beside the game, read once.
+struct WheelSettings {
+    int rotation = 900;          // degrees lock to lock, as set in the wheel's software
+    unsigned pedalMax = 65535;   // full-press value reported to the game
+    bool angleRadians = false;   // steering angle in radians instead of degrees
+    // The wheel model the game is told it has (a Logitech G29 by default).
+    unsigned vendor = 0x046d;
+    unsigned product = 0xc24f;
+    int capability = 0;          // steering-wheel capability bits reported to the game
+    int ffbGain = 100;           // force feedback strength in percent
+    bool ffbInvert = false;      // reverse the direction of the title's constant forces
+    // The player's own pad reports itself as the steering wheel too, as a G29 does on a PS4;
+    // the title only turns on its wheel mode (and force feedback) for such a pad. Off by
+    // default: in that mode the paddles do not shift yet.
+    bool padIsWheel = false;
+};
+const WheelSettings& Wheel();
+
+// True when [address, address + size) can be read, for logging what the game passes.
+bool Readable(const void* address, std::size_t size);
 }
 
 extern "C" void PadPublishInput_nid_postfix(const PadInputState& input);

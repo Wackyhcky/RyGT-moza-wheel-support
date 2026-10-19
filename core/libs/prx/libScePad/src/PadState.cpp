@@ -101,6 +101,7 @@ namespace {
 }
 
 void Pad::Initialize() {
+    StartWheel();
     std::lock_guard lock(stateMutex);
     if (failure) std::rethrow_exception(failure);
     if (!initialized) {
@@ -126,20 +127,31 @@ PadData Pad::ReadState(int slot) {
     std::uint8_t* touchIds = p.touchIds;
     if (failure) std::rethrow_exception(failure);
     if (!initialized) throw std::runtime_error("Pad: read before initialization");
+    PadInputState current = state;
     const std::uint64_t now = sceKernelGetProcessTime();
+    if (slot == 0) {
+        // A wheel belongs to player 1; its buttons moving on their own are new input too.
+        ApplyWheel(current);
+        static PadInputState lastRead;
+        if (current.buttons != lastRead.buttons || current.sticks != lastRead.sticks ||
+            current.analogButtonsL2 != lastRead.analogButtonsL2 || current.analogButtonsR2 != lastRead.analogButtonsR2) {
+            p.timestamp = std::max(p.timestamp, now);
+        }
+        lastRead = current;
+    }
     PadData data{};
-    data.buttons = state.buttons;
-    data.left_stick_x = state.sticks[0];
-    data.left_stick_y = state.sticks[1];
-    data.right_stick_x = state.sticks[2];
-    data.right_stick_y = state.sticks[3];
-    data.analog_buttons_l2 = state.analogButtonsL2 != 0 ? state.analogButtonsL2 : static_cast<std::uint8_t>((state.buttons & 0x100) != 0 ? 255 : 0);
-    data.analog_buttons_r2 = state.analogButtonsR2 != 0 ? state.analogButtonsR2 : static_cast<std::uint8_t>((state.buttons & 0x200) != 0 ? 255 : 0);
+    data.buttons = current.buttons;
+    data.left_stick_x = current.sticks[0];
+    data.left_stick_y = current.sticks[1];
+    data.right_stick_x = current.sticks[2];
+    data.right_stick_y = current.sticks[3];
+    data.analog_buttons_l2 = current.analogButtonsL2 != 0 ? current.analogButtonsL2 : static_cast<std::uint8_t>((current.buttons & 0x100) != 0 ? 255 : 0);
+    data.analog_buttons_r2 = current.analogButtonsR2 != 0 ? current.analogButtonsR2 : static_cast<std::uint8_t>((current.buttons & 0x200) != 0 ? 255 : 0);
 
-    const bool live = state.hasMotion && output.motionEnabled;
+    const bool live = current.hasMotion && output.motionEnabled;
     const std::array<float, 3> rest{0.0f, 9.80665f, 0.0f};
-    const std::array<float, 3>& accel = live ? state.accel : rest;
-    const std::array<float, 3> gyro = live ? state.gyro : std::array<float, 3>{0.0f, 0.0f, 0.0f};
+    const std::array<float, 3>& accel = live ? current.accel : rest;
+    const std::array<float, 3> gyro = live ? current.gyro : std::array<float, 3>{0.0f, 0.0f, 0.0f};
     if (live) {
         float dt = lastFuseTime != 0 && now > lastFuseTime ? static_cast<float>(now - lastFuseTime) * 1e-6f : 0.0f;
         dt = std::min(dt, 0.1f);
@@ -167,7 +179,7 @@ PadData Pad::ReadState(int slot) {
 
     std::uint8_t touchNum = 0;
     for (int i = 0; i < 2; ++i) {
-        const PadTouchPoint& tp = state.touch[i];
+        const PadTouchPoint& tp = current.touch[i];
         if (!tp.active) { prevTouchActive[i] = false; continue; }
         if (!prevTouchActive[i]) touchIds[i] = static_cast<std::uint8_t>(nextTouchId++ & 0x7F);
         prevTouchActive[i] = true;
@@ -178,10 +190,10 @@ PadData Pad::ReadState(int slot) {
         }
         ++touchNum;
     }
-    if (touchNum == 0 && (state.touchLeft || state.touchRight)) {
+    if (touchNum == 0 && (current.touchLeft || current.touchRight)) {
         data.buttons |= 0x100000;
         touchNum = 1;
-        data.touch_data_touch0_x = state.touchRight ? 1440 : 480;
+        data.touch_data_touch0_x = current.touchRight ? 1440 : 480;
         data.touch_data_touch0_y = 471;
         data.touch_data_touch0_id = 0;
     }

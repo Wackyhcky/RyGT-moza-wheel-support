@@ -15,6 +15,10 @@ constexpr int PAD_HANDLE = 1;
 
 constexpr int PAD_CONNECTION_TYPE_LOCAL = 0;
 constexpr int PAD_DEVICE_CLASS_STANDARD = 0;
+constexpr int PAD_DEVICE_CLASS_STEERING_WHEEL = 6;
+// The handle of a wheel opened with scePadOpenExt.
+constexpr int PAD_WHEEL_HANDLE = 0x10;
+constexpr int PAD_ERROR_DEVICE_NOT_CONNECTED = static_cast<int>(0x80920007);
 
 constexpr int PAD_DEVICE_TYPE_NONE = 0;
 constexpr int PAD_DEVICE_TYPE_NAVIGATOR = 1;
