@@ -72,7 +72,7 @@ namespace RyGT
         readonly Dictionary<int, Device> devices = new Dictionary<int, Device>();
         readonly List<int> deviceOrder = new List<int>();
         readonly object gate = new object();
-        readonly Label status, deviceList;
+        readonly Label status, deviceList, rawInput;
         readonly NumericUpDown rotation, gain;
         readonly CheckBox invertForces, gameWheelMode;
         readonly Timer timer;
@@ -113,6 +113,9 @@ namespace RyGT
             });
             deviceList = new Label { AutoSize = true, MaximumSize = new Size(720, 0), ForeColor = Dark.DimText, Margin = new Padding(0, 0, 0, 6) };
             outer.Controls.Add(deviceList);
+            // What the window receives right now, so it is easy to see that the wheel is being read.
+            rawInput = new Label { AutoSize = true, MaximumSize = new Size(740, 0), ForeColor = Dark.DimText, Margin = new Padding(0, 0, 0, 6), Font = new Font("Consolas", 8.5f) };
+            outer.Controls.Add(rawInput);
 
             var table = new TableLayoutPanel { ColumnCount = 5, AutoSize = true, Dock = DockStyle.Top, Margin = new Padding(0) };
             table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 36));
@@ -189,6 +192,7 @@ namespace RyGT
             Controls.Add(bottom);
             outer.BringToFront();
             CancelButton = cancel;
+            outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             outer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             outer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -296,6 +300,14 @@ namespace RyGT
                 deviceList.Text = deviceOrder.Count == 0
                     ? "No wheel or joystick found. Plug it in (and start its software, like Moza Pit House or G HUB)."
                     : "Found: " + string.Join(", ", deviceOrder.Select(id => devices[id].Name + (devices[id].Wheel ? " (wheel)" : "")));
+                var lines = deviceOrder.Select(id =>
+                {
+                    var d = devices[id];
+                    return "Live: axes " + string.Join(" ", d.Axes.Select((v, i) => i + ":" + (v * 100 / 32768).ToString(CultureInfo.InvariantCulture) + "%")) +
+                           "   buttons " + (d.Buttons.Count == 0 ? "none" : string.Join(",", d.Buttons.OrderBy(b => b))) +
+                           (d.Hats.Length > 0 && d.Hats[0] != 0 ? "   hat " + d.Hats[0] : "");
+                });
+                rawInput.Text = string.Join(Environment.NewLine, lines);
                 foreach (var row in Rows) ShowLive(row);
                 if (detecting != null) StepDetect();
             }
@@ -335,6 +347,7 @@ namespace RyGT
                     status.Text = "No wheel found yet.";
                     return;
                 }
+                if (detecting != null) detecting.Detect.Text = "Detect";
                 detecting = row;
                 baseAxes = deviceOrder.ToDictionary(id => id, id => (int[])devices[id].Axes.Clone());
                 baseButtons = deviceOrder.ToDictionary(id => id, id => new HashSet<int>(devices[id].Buttons));
@@ -348,9 +361,14 @@ namespace RyGT
 
         void StepDetect()
         {
+            int left = (int)Math.Ceiling((detectUntil - DateTime.Now).TotalSeconds);
+            if (left > 0 && !status.Text.EndsWith(")")) status.Text += " (" + left + ")";
+            else if (left > 0) status.Text = status.Text.Substring(0, status.Text.LastIndexOf(" (")) + " (" + left + ")";
+            if (left > 0) detecting.Detect.Text = "Waiting " + left + "s";
             if (DateTime.Now > detectUntil)
             {
                 status.Text = "Nothing detected for " + detecting.Label + ".";
+                detecting.Detect.Text = "Detect";
                 detecting = null;
                 return;
             }
@@ -401,6 +419,7 @@ namespace RyGT
             var row = detecting;
             lastAssigned = row;
             detecting = null;
+            row.Detect.Text = "Detect";
             row.Source = source;
             var primary = Primary();
             row.DeviceName = primary != null && primary.Instance == device.Instance ? null : device.Name;

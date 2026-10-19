@@ -1517,8 +1517,9 @@ namespace RyGT
                     form.ShowInTaskbar = false;
                     form.Show();
                     Application.DoEvents();
-                    Thread.Sleep(200);
-                    Application.DoEvents();
+                    // The wheel window shows live state from its probe; give it a moment to arrive.
+                    var settle = DateTime.Now.AddMilliseconds(args[0] == "--snapshot-wheel" ? 2000 : 200);
+                    while (DateTime.Now < settle) { Application.DoEvents(); Thread.Sleep(20); }
                     using (var image = new Bitmap(form.ClientSize.Width, form.ClientSize.Height))
                     {
                         form.DrawToBitmap(image, new Rectangle(Point.Empty, form.ClientSize));
