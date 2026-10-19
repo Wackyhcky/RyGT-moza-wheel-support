@@ -430,7 +430,7 @@ int playEffect(SDL_Haptic* haptic, int id, SDL_HapticEffect& effect, bool& runni
     return id;
 }
 
-SDL_HapticEffect conditionEffect(Uint16 type, bool direction, int coefficient, int center) {
+SDL_HapticEffect conditionEffect(Uint16 type, bool direction, int coefficient, int center, int limit = 0xFFFF) {
     SDL_HapticEffect effect;
     std::memset(&effect, 0, sizeof(effect));
     effect.type = type;
@@ -441,8 +441,8 @@ SDL_HapticEffect conditionEffect(Uint16 type, bool direction, int coefficient, i
     }
     const auto k = static_cast<Sint16>(std::clamp(coefficient, 0, 32767));
     for (int axis = 0; axis < 3; ++axis) {
-        effect.condition.right_sat[axis] = 0xFFFF;
-        effect.condition.left_sat[axis] = 0xFFFF;
+        effect.condition.right_sat[axis] = static_cast<Uint16>(std::clamp(limit, 0, 0xFFFF));
+        effect.condition.left_sat[axis] = static_cast<Uint16>(std::clamp(limit, 0, 0xFFFF));
         effect.condition.right_coeff[axis] = k;
         effect.condition.left_coeff[axis] = k;
         effect.condition.center[axis] = static_cast<Sint16>(std::clamp(center, -32767, 32767));
@@ -480,13 +480,13 @@ void WheelInput::playForces(Device& device, const WheelForces& wanted) {
         device.constantEffect = id;
         device.played.constant = wanted.constant;
     }
-    const auto condition = [&](Uint16 type, unsigned feature, int& id, int coefficient, int center, int& playedCoefficient, int* playedCenter) {
+    const auto condition = [&](Uint16 type, unsigned feature, int& id, int coefficient, int center, int& playedCoefficient, int* playedCenter, int limit) {
         if ((device.hapticFeatures & feature) == 0) return;
         if (id >= 0 && !moved(coefficient, playedCoefficient) && (playedCenter == nullptr || !moved(center, *playedCenter))) return;
-        SDL_HapticEffect effect = conditionEffect(type, device.conditionNeedsDirection, scale(coefficient), center);
+        SDL_HapticEffect effect = conditionEffect(type, device.conditionNeedsDirection, scale(coefficient), center, limit);
         int result = playEffect(device.haptic, id, effect, running);
         if (result < 0 && !device.conditionNeedsDirection) {
-            effect = conditionEffect(type, true, scale(coefficient), center);
+            effect = conditionEffect(type, true, scale(coefficient), center, limit);
             result = playEffect(device.haptic, -1, effect, running);
             if (result >= 0) device.conditionNeedsDirection = true;
         }
@@ -494,8 +494,8 @@ void WheelInput::playForces(Device& device, const WheelForces& wanted) {
         playedCoefficient = coefficient;
         if (playedCenter != nullptr) *playedCenter = center;
     };
-    condition(SDL_HAPTIC_SPRING, SDL_HAPTIC_SPRING, device.gameSpringEffect, wanted.spring, wanted.springCenter, device.played.spring, &device.played.springCenter);
-    condition(SDL_HAPTIC_DAMPER, SDL_HAPTIC_DAMPER, device.damperEffect, wanted.damper, 0, device.played.damper, nullptr);
-    condition(SDL_HAPTIC_FRICTION, SDL_HAPTIC_FRICTION, device.frictionEffect, wanted.friction, 0, device.played.friction, nullptr);
+    condition(SDL_HAPTIC_SPRING, SDL_HAPTIC_SPRING, device.gameSpringEffect, wanted.spring, wanted.springCenter, device.played.spring, &device.played.springCenter, wanted.springLimit);
+    condition(SDL_HAPTIC_DAMPER, SDL_HAPTIC_DAMPER, device.damperEffect, wanted.damper, 0, device.played.damper, nullptr, 0xFFFF);
+    condition(SDL_HAPTIC_FRICTION, SDL_HAPTIC_FRICTION, device.frictionEffect, wanted.friction, 0, device.played.friction, nullptr, 0xFFFF);
     device.played.active = true;
 }

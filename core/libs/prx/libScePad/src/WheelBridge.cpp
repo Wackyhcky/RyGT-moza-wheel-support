@@ -69,6 +69,8 @@ WheelForces DecodeForces(int fallbackSpring) {
                 const int k = std::max(p[2] & 0x0f, p[2] >> 4);
                 result.spring = std::max(result.spring, std::min(k, maximum) * 32767 / maximum);
                 result.springCenter = ((static_cast<int>(p[0]) + static_cast<int>(p[1])) / 2 - 0x80) * 256;
+                // Byte 6 of a spring command caps its force (0x60 is about 38%).
+                result.springLimit = p[4] != 0 ? p[4] * 0xFFFF / 0xFF : 0xFFFF;
                 anySpring = true;
                 break;
             }

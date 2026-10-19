@@ -32,6 +32,7 @@ struct WheelForces {
     int constant = 0;       // -32767 .. 32767
     int spring = 0;         // 0 .. 32767
     int springCenter = 0;   // -32767 .. 32767
+    int springLimit = 65535;  // most force the spring may apply, 0 .. 65535
     int damper = 0;         // 0 .. 32767
     int friction = 0;       // 0 .. 32767
 
