@@ -95,6 +95,9 @@ int KernelEqueuePrivate::GetTriggeredEvents(KernelEvent* ev, int num) {
                 e.event = e.pendingEvents.front();
                 e.pendingEvents.pop_front();
                 e.triggered = true;
+            } else if (e.triggered) {
+                // A level-triggered event stays active; like kevent, it is reported once per call.
+                break;
             }
             if (ret >= num) {
                 break;
@@ -137,6 +140,9 @@ int KernelEqueuePrivate::WaitForEvents(KernelEvent* ev, int num, uint32_t micros
                     e.event = e.pendingEvents.front();
                     e.pendingEvents.pop_front();
                     e.triggered = true;
+                } else if (e.triggered) {
+                    // A level-triggered event stays active; like kevent, it is reported once per call.
+                    break;
                 }
                 if (ret >= num) {
                     break;
