@@ -31,3 +31,12 @@ if(BUILD_TESTING)
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:libScePad>")
     endif()
 endif()
+
+# The launcher's wheel mapping window reads live wheel state through this helper, so it sees the
+# same devices and numbers as libScePad.
+add_executable(ryty-wheel-probe ${CMAKE_CURRENT_SOURCE_DIR}/tools/WheelProbe.cpp)
+target_include_directories(ryty-wheel-probe PRIVATE ${CMAKE_SOURCE_DIR}/3rdparty/SDL2/include)
+target_link_libraries(ryty-wheel-probe PRIVATE SDL2-static)
+if(MINGW)
+    target_link_options(ryty-wheel-probe PRIVATE -static -static-libgcc -static-libstdc++)
+endif()
