@@ -25,6 +25,7 @@ namespace RyGT
             public int Instance;
             public string Name;
             public bool Wheel;
+            public bool ForceFeedback;
             public int[] Axes = new int[0];
             public HashSet<int> Buttons = new HashSet<int>();
             public int[] Hats = new int[0];
@@ -283,7 +284,8 @@ namespace RyGT
                     var device = new Device
                     {
                         Instance = int.Parse(parts[1], CultureInfo.InvariantCulture),
-                        Wheel = parts[4] == "1",
+                        Wheel = parts[4] == "1" || parts[4] == "2",
+                        ForceFeedback = parts[4] == "2",
                         Name = parts[8]
                     };
                     devices[device.Instance] = device;
@@ -300,9 +302,11 @@ namespace RyGT
             }
         }
 
-        /// The device libScePad uses when a line names none: the first wheel, else the first device with axes.
+        /// The device libScePad uses when a line names none: the first wheel with force feedback, else the
+        /// first wheel, else the first device with axes.
         Device Primary()
         {
+            foreach (var id in deviceOrder) if (devices[id].ForceFeedback) return devices[id];
             foreach (var id in deviceOrder) if (devices[id].Wheel) return devices[id];
             foreach (var id in deviceOrder) if (devices[id].Axes.Length > 0) return devices[id];
             return null;

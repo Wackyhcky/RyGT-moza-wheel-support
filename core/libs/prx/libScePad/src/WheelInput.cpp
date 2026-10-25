@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <initializer_list>
 
 #include "SDL.h"
 #include "prx/libc/include/General.hpp"
@@ -44,6 +45,24 @@ std::string lower(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return value;
 }
+
+bool hasAny(const std::string& lowerName, std::initializer_list<const char*> words) {
+    return std::any_of(words.begin(), words.end(), [&lowerName](const char* word) { return lowerName.find(word) != std::string::npos; });
+}
+
+}
+
+// The wheel makers also sell pedal sets, shifters and handbrakes with their own USB cable
+// (Fanatec ClubSport pedals, Thrustmaster T-LCM, TH8A and TSS, Moza SR-P, HGP and HBP...), under
+// the same vendor id as their wheels; only the name tells them apart.
+WheelInput::Peripheral WheelInput::PeripheralKind(const std::string& lowerName) {
+    if (hasAny(lowerName, {"handbrake", "hand brake", "hbp"})) return Peripheral::Handbrake;
+    if (hasAny(lowerName, {"shifter", "th8", "sequential", "hgp", "sgp"})) return Peripheral::Shifter;
+    if (hasAny(lowerName, {"pedal", "t-lcm", "t3pm", "sr-p"})) return Peripheral::Pedals;
+    return Peripheral::None;
+}
+
+namespace {
 
 // 0..1 travel of a pedal axis from its resting position. A pedal that rests at one end of the
 // range is read towards the other end (Logitech pedals rest high, most others rest low); one
@@ -94,6 +113,8 @@ WheelInput::~WheelInput() {
 
 bool WheelInput::IsWheel(int deviceIndex) {
     if (SDL_JoystickGetDeviceType(deviceIndex) == SDL_JOYSTICK_TYPE_WHEEL) return true;
+    const char* name = SDL_JoystickNameForIndex(deviceIndex);
+    if (PeripheralKind(lower(name != nullptr ? name : "")) != Peripheral::None) return false;
     const std::uint16_t vendor = SDL_JoystickGetDeviceVendor(deviceIndex);
     const std::uint16_t product = SDL_JoystickGetDeviceProduct(deviceIndex);
     return vendor == VendorMoza || vendor == VendorFanatec || isLogitechWheel(vendor, product) ||
@@ -118,13 +139,19 @@ void WheelInput::open(int deviceIndex) {
     device->vendor = SDL_JoystickGetVendor(joystick);
     device->product = SDL_JoystickGetProduct(joystick);
     device->wheel = IsWheel(deviceIndex);
+    device->kind = device->wheel ? Peripheral::None : PeripheralKind(device->lowerName);
     const int axes = std::max(0, SDL_JoystickNumAxes(joystick));
     device->rest.assign(static_cast<std::size_t>(axes), 0);
     device->axisLogged.assign(static_cast<std::size_t>(axes), false);
     device->buttonLogged.assign(static_cast<std::size_t>(std::max(0, SDL_JoystickNumButtons(joystick))), false);
     // DirectInput reports zeros until the first poll, so the resting positions are read a moment later.
     device->restAt = std::chrono::steady_clock::now() + std::chrono::milliseconds(300);
-    APS5_LOG_OUT("Pad: connected %s: %s (%04x:%04x, %d axes, %d buttons, %d hats)", device->wheel ? "wheel" : "joystick",
+    const char* kind = device->wheel                             ? "wheel"
+                       : device->kind == Peripheral::Pedals    ? "pedals"
+                       : device->kind == Peripheral::Shifter   ? "shifter"
+                       : device->kind == Peripheral::Handbrake ? "handbrake"
+                                                               : "joystick";
+    APS5_LOG_OUT("Pad: connected %s: %s (%04x:%04x, %d axes, %d buttons, %d hats)", kind,
         device->name.c_str(), device->vendor, device->product, axes, SDL_JoystickNumButtons(joystick), SDL_JoystickNumHats(joystick));
     startSpring(*device);
     devices.push_back(std::move(device));
@@ -194,6 +221,10 @@ void WheelInput::close(SDL_JoystickID instanceId) {
 }
 
 WheelInput::Device* WheelInput::primary() const {
+    // A base with force feedback first: with several devices from one maker it is the wheel.
+    for (const auto& device : devices) {
+        if (device->wheel && device->haptic != nullptr) return device.get();
+    }
     for (const auto& device : devices) {
         if (device->wheel) return device.get();
     }
@@ -245,8 +276,10 @@ void WheelInput::addDefaults(Device& wheel, std::vector<ActiveBinding>& out) con
         button(9, PadButton::L3);
     }
 
-    // Pedals: axes that rest at one end of their range, on the wheel first and then on any
-    // separate pedal set, in axis order: throttle, brake, then clutch.
+    // Pedals: axes that rest at one end of their range, in axis order: throttle, brake, then
+    // clutch. A pedal set on its own cable comes first, since a base reports its pedal port's
+    // axes at rest even with nothing plugged in; then the wheel, then other joysticks. A
+    // handbrake or shifter is never taken for a pedal.
     std::vector<std::pair<Device*, int>> pedals;
     const auto collect = [&pedals](Device& device, int skipAxis) {
         if (!device.restCaptured) return;
@@ -254,9 +287,12 @@ void WheelInput::addDefaults(Device& wheel, std::vector<ActiveBinding>& out) con
             if (axis != skipAxis && std::abs(static_cast<int>(device.rest[axis])) > 30000) pedals.emplace_back(&device, axis);
         }
     };
+    for (const auto& device : devices) {
+        if (device.get() != &wheel && device->kind == Peripheral::Pedals) collect(*device, -1);
+    }
     collect(wheel, 0);
     for (const auto& device : devices) {
-        if (device.get() != &wheel) collect(*device, -1);
+        if (device.get() != &wheel && device->kind == Peripheral::None) collect(*device, -1);
     }
     if (pedals.size() > 0) add(*pedals[0].first, {InputControl::Throttle, PadButton::None, pedals[0].second});
     if (pedals.size() > 1) add(*pedals[1].first, {InputControl::Brake, PadButton::None, pedals[1].second});

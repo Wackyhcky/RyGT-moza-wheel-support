@@ -3,13 +3,15 @@
 // wheel mapping window sees the same devices and the same axis/button numbers as the game.
 //
 // Output, one line each, flushed:
-//   device <instance> <vid> <pid> <wheel 0|1> <axes> <buttons> <hats> <name>   (after "devices")
+//   device <instance> <vid> <pid> <wheel 0|1|2> <axes> <buttons> <hats> <name>   (after "devices";
+//          2 is a wheel with force feedback, which libScePad prefers as the wheel)
 //   state <instance> <axis,axis,...> <pressed button,...|-> <hat,hat,...|->
 // "devices" starts a new device list whenever one is connected or removed. The program exits
 // when the process given as its first argument ends.
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -27,9 +29,21 @@
 
 namespace {
 
+// Kept in step with WheelInput::PeripheralKind: pedal sets, shifters and handbrakes on their own
+// cable share their maker's vendor id with its wheels.
+bool IsPeripheral(const char* name) {
+    std::string lower = name != nullptr ? name : "";
+    for (auto& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    for (const char* word : {"handbrake", "hand brake", "hbp", "shifter", "th8", "sequential", "hgp", "sgp", "pedal", "t-lcm", "t3pm", "sr-p"}) {
+        if (lower.find(word) != std::string::npos) return true;
+    }
+    return false;
+}
+
 // Kept in step with WheelInput::IsWheel.
 bool IsWheel(int index) {
     if (SDL_JoystickGetDeviceType(index) == SDL_JOYSTICK_TYPE_WHEEL) return true;
+    if (IsPeripheral(SDL_JoystickNameForIndex(index))) return false;
     const Uint16 vendor = SDL_JoystickGetDeviceVendor(index);
     const Uint16 product = SDL_JoystickGetDeviceProduct(index);
     if (vendor == 0x346E || vendor == 0x0EB7) return true;
@@ -62,8 +76,9 @@ void Rescan() {
         const char* name = SDL_JoystickName(joystick);
         Device device{joystick, SDL_JoystickInstanceID(joystick), wheel};
         devices.push_back(device);
+        const bool forceFeedback = wheel && SDL_JoystickIsHaptic(joystick) == SDL_TRUE;
         std::printf("device %d %04x %04x %d %d %d %d %s\n", device.instance, SDL_JoystickGetVendor(joystick), SDL_JoystickGetProduct(joystick),
-            wheel ? 1 : 0, SDL_JoystickNumAxes(joystick), SDL_JoystickNumButtons(joystick), SDL_JoystickNumHats(joystick),
+            forceFeedback ? 2 : wheel ? 1 : 0, SDL_JoystickNumAxes(joystick), SDL_JoystickNumButtons(joystick), SDL_JoystickNumHats(joystick),
             name != nullptr ? name : "unknown");
     }
     std::fflush(stdout);
@@ -87,6 +102,8 @@ int main(int argc, char** argv) {
         std::printf("error %s\n", SDL_GetError());
         return 1;
     }
+    // Only to ask which wheel has force feedback; without it every wheel is reported as 1.
+    SDL_InitSubSystem(SDL_INIT_HAPTIC);
     Rescan();
     for (;;) {
 #ifdef _WIN32

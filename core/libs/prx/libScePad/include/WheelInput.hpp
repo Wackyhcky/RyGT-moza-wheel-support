@@ -54,6 +54,10 @@ public:
     // mapping for it.
     static bool IsWheel(int deviceIndex);
 
+    // A pedal set, shifter or handbrake, told apart from a wheel by its (lower-case) name.
+    enum class Peripheral { None, Pedals, Shifter, Handbrake };
+    static Peripheral PeripheralKind(const std::string& lowerName);
+
     void HandleEvent(const SDL_Event& event);
     // Samples every open device; returns true when the merged state changed.
     bool Update();
@@ -71,6 +75,7 @@ private:
         std::uint16_t vendor = 0;
         std::uint16_t product = 0;
         bool wheel = false;
+        Peripheral kind = Peripheral::None;
         std::vector<std::int16_t> rest;
         bool restCaptured = false;
         std::chrono::steady_clock::time_point restAt{};

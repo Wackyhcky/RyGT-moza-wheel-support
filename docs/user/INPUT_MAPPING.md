@@ -40,8 +40,8 @@ The wheel is reported to the game as a native steering wheel: `scePadOpenExt` op
 
 Without any configuration:
 
-- Steering is axis 0 of the wheel.
-- The pedals are found automatically: axes that rest at one end of their range, on the wheel first and then on a separately connected pedal set, become the throttle, brake and clutch, in axis order. Pedals that rest high (Logitech) and pedals that rest low (Moza, most others) both work.
+- Steering is axis 0 of the wheel. With several devices from one maker connected (a Fanatec base with ClubSport pedals on their own USB cable, a Thrustmaster base with a T-LCM, TH8A or TSS, a Moza base with SR-P, HGP or HBP), pedal sets, shifters and handbrakes are told apart from the wheel by their names, and a base with force feedback is preferred as the wheel.
+- The pedals are found automatically: axes that rest at one end of their range become the throttle, brake and clutch, in axis order, taken first from a pedal set on its own cable, then from the wheel, then from other joysticks. Handbrakes and shifters are never taken for pedals. Pedals that rest high (Logitech) and pedals that rest low (Moza, most others) both work.
 - The wheel's D-pad is the pad's D-pad. On Logitech wheels the face buttons map to the matching PlayStation buttons (or A/B/X/Y on Xbox wheels), the right and left paddles to R1 and L1, and Options/Menu to Options. Other wheels have no default button mapping.
 - Wheels with force feedback get a centering spring at 30% strength until the game sends its own forces. Set `RTY_WHEEL_SPRING` to a value from 0 to 100 to change it; 0 turns it off.
 
