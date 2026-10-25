@@ -12,6 +12,7 @@ inline constexpr std::int32_t AlreadyInitialized = static_cast<std::int32_t>(0x8
 inline constexpr std::int32_t NotInitialized = static_cast<std::int32_t>(0x81110002);
 inline constexpr std::int32_t InvalidHandle = static_cast<std::int32_t>(0x81110003);
 inline constexpr std::int32_t DeviceDisconnected = static_cast<std::int32_t>(0x81110004);
+inline constexpr std::int32_t AlreadyOpened = static_cast<std::int32_t>(0x81110006);
 inline constexpr std::int32_t ParameterNull = static_cast<std::int32_t>(0x81110008);
 inline constexpr std::int32_t ParameterInvalid = static_cast<std::int32_t>(0x81110009);
 inline constexpr std::int32_t UnsupportedFeature = static_cast<std::int32_t>(0x81110016);
@@ -42,7 +43,25 @@ struct DeviceInformation {
     std::uint8_t reserved1[7];
 };
 
+// Tangents of the half-angles of one eye's view, as a PlayStation VR reports them.
+struct FieldOfView {
+    float tanOut;
+    float tanIn;
+    float tanTop;
+    float tanBottom;
+};
+
+// One eye's position relative to the centre of the head, in metres.
+struct EyeOffset {
+    float x;
+    float y;
+    float z;
+    std::uint8_t reserved[20];
+};
+
 static_assert(sizeof(InitializeParam) == 16);
+static_assert(sizeof(FieldOfView) == 16);
+static_assert(sizeof(EyeOffset) == 32);
 static_assert(sizeof(DeviceInformation) == 32);
 static_assert(offsetof(DeviceInformation, userId) == 4);
 static_assert(offsetof(DeviceInformation, panelWidth) == 12);

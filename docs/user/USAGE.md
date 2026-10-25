@@ -86,3 +86,4 @@ still work so that previously configured setups keep running:
 | `RTY_SHADER_CACHE_DIR`, `RTY_NO_SHADER_CACHE` | Shader disk cache location / disable switch. |
 | `RTY_ENTITLEMENTS` | Entitlement data ini override. |
 | `RTY_FMOD_SILENT`, `RTY_FMOD_NOSOUND` | Audio fallback switches used by the FMOD compatibility layer. |
+| `RYGT_VR` | Experimental, diagnostics only: `1` reports a PlayStation VR headset as connected so the game offers its VR modes, and logs each headset call to `stderr.log`. Nothing is shown in a headset yet. |
