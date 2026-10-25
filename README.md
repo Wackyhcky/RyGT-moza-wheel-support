@@ -29,7 +29,8 @@ everything GT Sport needs added on top.
 | Race summary and results | Working |
 | Audio | Working |
 | Controllers | Working through SDL |
-| Online features | Not supported |
+| Online features | Work in progress |
+| Vr features | Work in progress |
 
 Known issues:
 - The first 30 seconds of a race can stutter while graphics pipelines compile.
